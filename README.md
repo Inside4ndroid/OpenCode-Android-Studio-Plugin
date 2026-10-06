@@ -1,0 +1,175 @@
+# OpenCode ASP (OpenCode Android Studio Plugin)
+
+[![Android Studio Plugin](https://img.shields.io/badge/Android%20Studio-Plugin-blue)](https://developer.android.com/studio)
+[![OpenCode](https://img.shields.io/badge/OpenCode-AI%20Agent-green)](https://opencode.ai)
+
+An Android Studio plugin that integrates [OpenCode](https://opencode.ai), the open-source AI coding agent, into your development workflow.
+
+## Features
+
+| Feature | Description | Shortcut (Mac) | Shortcut (Win/Linux) |
+|---------|-------------|----------------|----------------------|
+| **Quick Launch** | Connect to existing OpenCode server or create new terminal | `Cmd + Esc` | `Ctrl + \` |
+| **Add to Terminal** | Send current file/selection or selected files to OpenCode | `Opt + Cmd + K` | `Ctrl + Alt + K` |
+| **Diff Review** | View diffs and accept/reject changes in IDE | — | — |
+| **Notifications** | System alert when task completes | — | — |
+| **Auto-Resume** | Restore last session on launch | — | — |
+| **Smart Links** | Clickable file paths in terminal | — | — |
+| **Auth Support** | Password support for OpenCode servers, with optional secure remembering | — | — |
+| **Local Change Alert** | Warn when local edits differ from AI output | — | — |
+
+### Feature Comparison with Claude Code
+
+| Feature | Claude Code | OpenCode |
+|---------|-------------|----------|
+| Quick Launch | ✅ | ✅ |
+| Diff Viewing | ✅ | ✅ |
+| File Reference Shortcuts | ✅ | ✅ |
+| Diagnostic Sharing | ✅ | ❌ (uses built-in LSP) |
+
+### Sidebar Icon
+
+Click the **OpenCode** icon in the right sidebar to instantly focus or create an OpenCode terminal session.
+
+### Context Menus
+
+- **Editor**: Right-click in editor → *OpenCode: Add Context*
+- **Project View**: Right-click on files/folders → *OpenCode: Add File(s)*
+
+## Requirements
+
+- **Android Studio**: Version 2025.2 or later
+- **OpenCode CLI**: Install via `npm install -g opencode-ai` or see [opencode.ai/download](https://opencode.ai/download)
+- **Git**: Install Git and open a project inside a Git repository to use **Accept**, which stages the reviewed file.
+- **CLI compatibility**: The plugin detects OpenCode CLI v1 and v2 automatically. For v2, it starts an API server with `serve` and connects the terminal UI to that server.
+
+## Installation
+
+**Plugin repository**: https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin
+
+Install the built plugin ZIP from **Settings** → **Plugins** → **⚙** → **Install Plugin from Disk**.
+
+## Usage
+
+### 1. Launch OpenCode Terminal
+
+Press `Cmd+Esc` (Mac) or `Ctrl+\` (Win/Linux) to open the connection dialog. You can:
+
+- **Connect to existing server**: Enter `host:port` (e.g., `127.0.0.1:58052`) and optional password to connect to OpenCode Desktop or any running OpenCode server. Authentication is detected automatically if available.
+- **Password**: OpenCode CLI v2 is detected automatically and requires a server password before connecting. For older CLI versions, a password is optional unless the server requires authentication. Select **Remember password** to store it in the IDE Password Safe; leave it unchecked to remove any previously remembered password.
+- **Create new terminal**: Use default `127.0.0.1:4096` to create a local OpenCode terminal session. The terminal tab will be named `OpenCode(4096)`.
+
+*Your last connection settings (address, mode, password) are remembered automatically.*
+
+![Step 1: Launch OpenCode](images/1.png)
+
+### 2. Send Code Context to OpenCode
+
+In the editor or Project View, press `Opt+Cmd+K` (Mac) or `Ctrl+Alt+K` (Win/Linux).
+
+- If the OpenCode terminal is not open yet, the plugin creates/focuses it automatically.
+- In the editor, it shares the **current file** even if nothing is selected.
+
+![Step 2: Selection](images/2.png)
+
+The plugin will send:
+
+- **Editor selection**: `@path/to/file.kt#L10-25`
+- **Editor (no selection)**: `@path/to/file.kt`
+- **Project View selection**: `@path/to/file.kt` for each selected file
+
+![Step 3: Result in Terminal](images/3.png)
+
+This allows OpenCode to understand the context of your question or request.
+
+### 3. Sidebar Button
+
+Click the OpenCode icon in the right sidebar to quickly focus or create the OpenCode terminal.
+
+![Step 4: Sidebar Button](images/4.png)
+
+### 4. Review Diffs
+
+When OpenCode edits files, the plugin opens a native IDE diff viewer.
+
+- **Chronological View**: Changes are shown in the order they were made, starting from the first modified file.
+- **Navigation**: Use **← →** arrows to switch files and **↑ ↓** arrows to jump between changes.
+- **Trigger**: The diff viewer opens automatically when OpenCode finishes a response (session idle).
+- **Progress**: The title shows your review progress (e.g., `1 of 5`) for multi-file changes.
+- **Accept**: Writes the AI's changes to disk and stages the file (git add). Automatically opens the next file.
+- **Reject**: Restores the file to its state before the AI started editing. Automatically opens the next file.
+- **Local Modified**: The diff title shows `(Local Modified)` when your file differs from AI output.
+
+![Diff Viewer - Accept](images/5.png)
+![Diff Viewer - Reject](images/6.png)
+
+### 5. Task Notifications
+
+The plugin sends a system notification when OpenCode finishes a task (transitions from Busy to Idle). This allows you to switch to other work while the AI is generating code, and be notified immediately when it's done.
+
+> **Tip**: To receive desktop notifications, allow notifications for Android Studio in your operating system settings.
+
+### 6. Smart File Links
+
+File paths in the terminal output (e.g., `@src/main/kotlin/Main.kt#L10-20`) are clickable. Clicking them opens the file in the editor and highlights the referenced lines.
+
+## Keyboard Shortcuts
+
+All shortcuts are customizable via **Settings** → **Keymap** → search for "OpenCode".
+
+| Action | Mac | Windows/Linux |
+|--------|-----|---------------|
+| Open/Focus OpenCode | `Cmd + Esc` | `Ctrl + \` |
+| Add to OpenCode Terminal | `Opt + Cmd + K` | `Ctrl + Alt + K` |
+
+## Terminal Management
+
+The plugin uses a single terminal tab per project named **"OpenCode({port})"**.
+
+- Only one OpenCode terminal session per project
+- The terminal persists across plugin actions
+- Closing the terminal tab will create a new one on next launch
+
+## Troubleshooting
+
+### "opencode: command not found"
+
+Install the OpenCode CLI:
+
+```bash
+npm install -g opencode-ai
+```
+
+Or download from [opencode.ai/download](https://opencode.ai/download)
+
+### Gradle `instrumentCode` fails with "Packages does not exist" on Windows
+
+Use Android Studio's bundled JBR as the Gradle runtime instead of Microsoft JDK 17. In PowerShell:
+
+```powershell
+$env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat buildPlugin
+```
+
+Alternatively, select Android Studio's bundled JBR under **Settings** → **Build, Execution, Deployment** → **Build Tools** → **Gradle** → **Gradle JVM**. This avoids changing the project's Java 17 bytecode target.
+
+### Terminal not responding
+
+Try closing the "OpenCode({port})" terminal tab and pressing `Cmd+Esc` or `Ctrl+\` again to create a fresh session.
+
+### Shortcuts not working
+
+1. Check for conflicts in **Settings** → **Keymap**
+2. Search for your shortcut to see if it's assigned to another action
+3. Reassign or remove conflicting shortcuts
+
+## Support
+
+- [OpenCode Documentation](https://opencode.ai/docs)
+- [OpenCode ASP Issues](https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin/issues)
+- [Discord Community](https://opencode.ai/discord)
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.

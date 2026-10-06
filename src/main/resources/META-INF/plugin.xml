@@ -1,0 +1,95 @@
+<!-- Plugin Configuration File: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+  <id>com.inside4ndroid.opencodestudio</id>
+  <name>OpenCode ASP</name>
+  <vendor email="inside4ndroid.techsup@gmail.com" url="https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin">Inside4ndroid</vendor>
+  
+
+  <description><![CDATA[
+    <h2>OpenCode ASP - OpenCode Android Studio Plugin</h2>
+    <p>Seamlessly integrate <a href="https://opencode.ai">OpenCode</a>, the open-source AI coding agent, into your Android Studio workflow.</p>
+
+    <h2>Key Features</h2>
+    <ul>
+        <li><b>Quick Launch:</b> Connect to an existing OpenCode server, including OpenCode Desktop, or start a local terminal with <code>Cmd+Esc</code> / <code>Ctrl+\</code>. Authentication is detected automatically when available; enter a server password when required and optionally save it in the IDE Password Safe.</li>
+        <li><b>Context Sharing:</b> Send the current file, selected code, or Project View files to OpenCode with <code>Opt+Cmd+K</code> / <code>Ctrl+Alt+K</code>.</li>
+        <li><b>Native Diff Review:</b> Review AI-generated changes across multiple files in the IDE. Accept a change to write and stage it with <code>git add</code>, or reject it to restore the previous content. Local History snapshots provide an additional recovery path.</li>
+        <li><b>Task Notifications:</b> Get notified when an OpenCode task finishes.</li>
+        <li><b>Session Resume:</b> Continue your recent OpenCode session when starting a terminal.</li>
+        <li><b>Smart File Links:</b> Open file references such as <code>@src/Main.kt#L10-20</code> directly in the editor.</li>
+    </ul>
+
+    <h2>Getting Started</h2>
+    <ol>
+        <li>Install <a href="https://opencode.ai/download">OpenCode CLI</a> (for example, with <code>npm install -g opencode-ai</code>) and Git.</li>
+        <li>Press <code>Cmd+Esc</code> on macOS or <code>Ctrl+\</code> on Windows/Linux to open the connection dialog.</li>
+        <li>Connect to an existing server or start a local session. OpenCode CLI v2 requires a server password.</li>
+        <li>Use <code>Opt+Cmd+K</code> / <code>Ctrl+Alt+K</code> to send code context to OpenCode.</li>
+    </ol>
+    <p>Requires Android Studio 2025.2 or later and the bundled Terminal plugin. See the <a href="https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin">project documentation</a> for setup details.</p>
+
+  ]]></description>
+
+  <depends>com.intellij.modules.platform</depends>
+  <depends>org.jetbrains.plugins.terminal</depends>
+  <!-- JCEF Browser Support (Optional) -->
+  <depends optional="true" config-file="opencode-web-support.xml">com.intellij.modules.jcef</depends>
+
+  <actions>
+    <action id="OpenCode.QuickLaunch"
+            class="ai.opencode.ide.jetbrains.QuickLaunchAction"
+            text="Open OpenCode"
+            description="Open or focus the OpenCode terminal"
+            icon="/icons/opencode.png">
+      <add-to-group group-id="ToolsMenu" anchor="first"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="control BACK_SLASH"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="meta ESCAPE"/>
+    </action>
+
+    <action id="OpenCode.AddLines"
+            class="ai.opencode.ide.jetbrains.SendSelectionToTerminalAction"
+            text="Add lines to OpenCode Terminal"
+            icon="/icons/opencode.png">
+      <add-to-group group-id="EditorPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
+    </action>
+
+    <action id="OpenCode.AddFile"
+            class="ai.opencode.ide.jetbrains.SendSelectionToTerminalAction"
+            text="Add to OpenCode Terminal"
+            icon="/icons/opencode.png">
+      <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+      <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
+      <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
+      <keyboard-shortcut keymap="Mac OS X 10.5+" first-keystroke="alt meta K"/>
+    </action>
+  </actions>
+
+  <extensions defaultExtensionNs="com.intellij">
+    <!-- Project-level Services -->
+    <projectService serviceImplementation="ai.opencode.ide.jetbrains.OpenCodeService"/>
+    <projectService serviceImplementation="ai.opencode.ide.jetbrains.session.SessionManager"/>
+    <projectService serviceImplementation="ai.opencode.ide.jetbrains.diff.DiffViewerService"/>
+
+    <!-- File Editor Provider -->
+    <fileEditorProvider implementation="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalFileEditorProvider"/>
+    <fileEditorProvider implementation="ai.opencode.ide.jetbrains.web.OpenCodeWebFileEditorProvider"/>
+
+    <!-- Notifications -->
+    <notificationGroup id="OpenCode" displayType="BALLOON"/>
+
+    <toolWindow id="OpenCode"
+                factoryClass="ai.opencode.ide.jetbrains.OpenCodeToolWindowFactory"
+                icon="/icons/opencode.png"
+                anchor="right"/>
+
+  </extensions>
+
+  <projectListeners>
+    <listener class="ai.opencode.ide.jetbrains.terminal.OpenCodeTerminalEditorListener"
+              topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+  </projectListeners>
+</idea-plugin>
