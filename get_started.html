@@ -5,12 +5,12 @@
 </p>
 
 <p>
-  <b>Download:</b> <a href="https://github.com/LaiZhou/OpenCode_UI/releases/tag/1.0.9">Get the latest version (1.0.9)</a>
+  <b>Download:</b> <a href="https://github.com/Inside4ndroid/OpenCode_UI/releases/latest">Get the latest version</a>
 </p>
 
 <h2>Key Features</h2>
 <ul>
-  <li><b>Quick Launch:</b> Connect to existing OpenCode server (e.g., OpenCode Desktop) or create new terminal with a single shortcut (Cmd+Esc / Ctrl+\). Supports automatic authentication and optional password input. Connection settings are remembered automatically.</li>
+  <li><b>Quick Launch:</b> Connect to an existing OpenCode server (e.g., OpenCode Desktop) or start a new terminal with a single shortcut (Cmd+Esc / Ctrl+\). OpenCode CLI v2 requires a server password; enter it when prompted and optionally save it securely in the IDE password store.</li>
   <li><b>Context Sharing:</b> Seamlessly send code selections or file references (with line numbers) from your editor or project view directly to the AI agent (Opt+Cmd+K).</li>
   <li><b>Diff Review:</b> Automatically review AI-generated code changes in chronological order. Title shows progress (e.g., "1 of 5"). Accept writes and stages changes; Reject restores the baseline. Both actions auto-advance to the next file.</li>
   <li><b>Notifications:</b> Get system-level alerts when AI tasks complete, so you can focus on other work while OpenCode runs.</li>
@@ -29,8 +29,9 @@
 <ol>
   <li>Install a <b>compatible JetBrains IDE</b> (version 2025.2 or later).</li>
   <li><b>Install the OpenCode CLI:</b> This plugin acts as a bridge to the CLI tool. Ensure you have it installed:
-    <br><code>npm install -g opencode</code>
+    <br><code>npm install -g opencode-ai</code>
   </li>
+  <li>For CLI v2, set a server password when prompted. The plugin detects CLI v1/v2 and uses the corresponding server and terminal commands.</li>
   <li><b>Ensure Git is installed:</b> The plugin uses local git commands for managing changes.</li>
   <li>Launch your IDE and ensure the plugin is enabled.</li>
   <li>Press <code>Cmd + Esc</code> (Mac) or <code>Ctrl + \</code> (Windows/Linux) to launch your first session.</li>

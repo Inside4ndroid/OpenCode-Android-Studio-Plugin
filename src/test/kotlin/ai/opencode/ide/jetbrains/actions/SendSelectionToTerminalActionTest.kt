@@ -12,6 +12,7 @@ import com.intellij.openapi.components.service
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.MapDataContext
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SendSelectionToTerminalActionTest : BasePlatformTestCase() {
@@ -72,12 +73,14 @@ class SendSelectionToTerminalActionTest : BasePlatformTestCase() {
         action.actionPerformed(event)
 
         // 4. Verify
-        // Wait for server to receive request (async)
-        val start = System.currentTimeMillis()
-        while (server?.receivedPrompts?.isEmpty() == true && System.currentTimeMillis() - start < 2000) {
+        // Pump IDE events while waiting for the asynchronously scheduled terminal paste.
+        val promptReceived = server?.promptReceived ?: error("Fake server was not initialized")
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (promptReceived.count > 0 && System.nanoTime() < deadline) {
             PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
-            Thread.sleep(50)
+            promptReceived.await(25, TimeUnit.MILLISECONDS)
         }
+        assertEquals("Server should have received a prompt", 0L, promptReceived.count)
 
         val prompts = server?.receivedPrompts ?: emptyList()
         assertFalse("Server should have received a prompt", prompts.isEmpty())

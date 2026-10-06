@@ -1,8 +1,7 @@
 package ai.opencode.ide.jetbrains.api
 
 import ai.opencode.ide.jetbrains.api.models.OpenCodeEvent
-import ai.opencode.ide.jetbrains.api.models.OpenCodeEventDeserializer
-import com.google.gson.GsonBuilder
+import ai.opencode.ide.jetbrains.api.models.OpenCodeEventParser
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.util.concurrency.AppExecutorUtil
 import okhttp3.*
@@ -45,10 +44,6 @@ class SseEventListener(
             }
         }
         .build()
-
-    private val gson = GsonBuilder()
-        .registerTypeAdapter(OpenCodeEvent::class.java, OpenCodeEventDeserializer())
-        .create()
 
     private var call: Call? = null
     private val isConnected = AtomicBoolean(false)
@@ -128,7 +123,7 @@ class SseEventListener(
     private fun parseAndDispatchEvent(json: String) {
         try {
             logger.debug("[SSE-Raw] $json")
-            val event = gson.fromJson(json, OpenCodeEvent::class.java)
+            val event = OpenCodeEventParser.parse(json)
             if (event != null) onEvent(event)
         } catch (e: Exception) {
             logger.debug("[SSE] Parse error: ${e.message}. JSON: $json")

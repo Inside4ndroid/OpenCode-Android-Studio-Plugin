@@ -52,7 +52,7 @@ class OpenCodeWebFileEditor(
 
             // 2. Inject Authentication via Header Injection
             val password = file.getUserData(OpenCodeWebVirtualFile.PASSWORD_KEY)
-            if (!password.isNullOrBlank()) {
+            if (!password.isNullOrEmpty()) {
                 val authString = "opencode:$password"
                 val encodedAuth = Base64.getEncoder().encodeToString(authString.toByteArray())
                 val authHeader = "Basic $encodedAuth"

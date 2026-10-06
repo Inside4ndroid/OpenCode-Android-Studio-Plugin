@@ -15,7 +15,7 @@ A JetBrains IDE plugin that integrates [OpenCode](https://opencode.ai) — the o
 | **Notifications** | System alert when task completes | — | — |
 | **Auto-Resume** | Restore last session on launch | — | — |
 | **Smart Links** | Clickable file paths in terminal | — | — |
-| **Auth Support** | Optional password for OpenCode server | — | — |
+| **Auth Support** | Password support for OpenCode servers, with optional secure remembering | — | — |
 | **Local Change Alert** | Warn when local edits differ from AI output | — | — |
 
 ### Feature Comparison with Claude Code
@@ -40,6 +40,7 @@ Click the **OpenCode** icon in the right sidebar to instantly focus or create an
 
 - **JetBrains IDE**: IntelliJ IDEA, WebStorm, PyCharm, etc. (2025.2+)
 - **OpenCode CLI**: Install via `npm install -g opencode` or see [opencode.ai/download](https://opencode.ai/download)
+- **CLI compatibility**: The plugin detects OpenCode CLI v1 and v2 automatically. For v2, it starts an API server with `serve` and connects the terminal UI to that server.
 
 ## Installation
 
@@ -54,6 +55,7 @@ Open **Settings** → **Plugins** → **Marketplace** → Search "OpenCode" → 
 Press `Cmd+Esc` (Mac) or `Ctrl+\` (Win/Linux) to open the connection dialog. You can:
 
 - **Connect to existing server**: Enter `host:port` (e.g., `127.0.0.1:58052`) and optional password to connect to OpenCode Desktop or any running OpenCode server. Authentication is detected automatically if available.
+- **Password**: OpenCode CLI v2 is detected automatically and requires a server password before connecting. For older CLI versions, a password is optional unless the server requires authentication. Select **Remember password** to store it in the IDE Password Safe; leave it unchecked to remove any previously remembered password.
 - **Create new terminal**: Use default `127.0.0.1:4096` to create a local OpenCode terminal session. The terminal tab will be named `OpenCode(4096)`.
 
 *Your last connection settings (address, mode, password) are remembered automatically.*
@@ -138,6 +140,18 @@ npm install -g opencode-ai
 ```
 
 Or download from [opencode.ai/download](https://opencode.ai/download)
+
+### Gradle `instrumentCode` fails with "Packages does not exist" on Windows
+
+Use Android Studio's bundled JBR as the Gradle runtime instead of Microsoft JDK 17. In PowerShell:
+
+```powershell
+$env:JAVA_HOME = "$env:ProgramFiles\Android\Android Studio\jbr"
+$env:Path = "$env:JAVA_HOME\bin;$env:Path"
+.\gradlew.bat buildPlugin
+```
+
+Alternatively, select Android Studio's bundled JBR under **Settings** → **Build, Execution, Deployment** → **Build Tools** → **Gradle** → **Gradle JVM**. This avoids changing the project's Java 17 bytecode target.
 
 ### Terminal not responding
 

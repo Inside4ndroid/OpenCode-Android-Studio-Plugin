@@ -25,17 +25,22 @@ data class FileDiff(
 class FileDiffDeserializer : JsonDeserializer<FileDiff> {
     override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): FileDiff {
         val obj = json.asJsonObject
+        fun stringValue(name: String): String =
+            obj.get(name)?.takeUnless(JsonElement::isJsonNull)?.asString ?: ""
+
+        fun intValue(name: String): Int =
+            obj.get(name)?.takeUnless(JsonElement::isJsonNull)?.asInt ?: 0
         
         return FileDiff(
-            file = decodeGoQuotedString(obj.get("file")?.asString ?: ""),
+            file = decodeGoQuotedString(stringValue("file")),
             // before 和 after 字段是普通 JSON 字符串，不需要 decodeGoQuotedString 解码
             // 否则会导致：
             // 1. 内容首尾的双引号被错误去除
             // 2. 内容中的反斜杠被错误转义 (e.g. "\\n" -> "\n")
-            before = obj.get("before")?.asString ?: "",
-            after = obj.get("after")?.asString ?: "",
-            additions = obj.get("additions")?.asInt ?: 0,
-            deletions = obj.get("deletions")?.asInt ?: 0
+            before = stringValue("before"),
+            after = stringValue("after"),
+            additions = intValue("additions"),
+            deletions = intValue("deletions")
         )
     }
     
