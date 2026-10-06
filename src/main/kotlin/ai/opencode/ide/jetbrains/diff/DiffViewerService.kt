@@ -66,8 +66,10 @@ open class DiffViewerService(private val project: Project) : Disposable {
             request
         }
 
-        val chain = SimpleDiffRequestChain(requests)
-        chain.index = (initialIndex ?: 0).coerceIn(0, requests.lastIndex)
+        val chain = SimpleDiffRequestChain(
+            requests,
+            (initialIndex ?: 0).coerceIn(0, requests.lastIndex)
+        )
 
         // Track the opened diff file for cleanup
         val connection = project.messageBus.connect(this)

@@ -4,7 +4,6 @@ import ai.opencode.ide.jetbrains.util.OpenCodeCliCompatibility
 import com.intellij.credentialStore.CredentialAttributes
 import com.intellij.credentialStore.Credentials
 import com.intellij.ide.passwordSafe.PasswordSafe
-import com.intellij.ide.passwordSafe.PasswordSafeException
 import com.intellij.ide.util.PropertiesComponent
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.module.ModuleManager
@@ -104,7 +103,7 @@ class OpenCodeConnectDialog(
                     }
                 }
             }
-        } catch (e: PasswordSafeException) {
+        } catch (e: Exception) {
             logger.warn("Could not retrieve the remembered OpenCode password", e)
             Messages.showErrorDialog(project, "Could not retrieve the remembered OpenCode password: ${e.message}", "OpenCode")
         }
@@ -207,7 +206,7 @@ class OpenCodeConnectDialog(
             }
             PasswordSafe.instance.set(PASSWORD_CREDENTIALS, credentials)
             props.unsetValue(PROP_LEGACY_LAST_PASSWORD)
-        } catch (e: PasswordSafeException) {
+        } catch (e: Exception) {
             logger.warn("Could not save the remembered OpenCode password", e)
             Messages.showErrorDialog(project, "Could not save the OpenCode password securely: ${e.message}", "OpenCode")
             return

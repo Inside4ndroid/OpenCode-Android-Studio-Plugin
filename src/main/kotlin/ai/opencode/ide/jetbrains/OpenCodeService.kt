@@ -38,7 +38,8 @@ import com.intellij.openapi.ui.Messages
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 
-import org.jetbrains.plugins.terminal.TerminalView
+import org.jetbrains.plugins.terminal.TerminalToolWindowManager
+import org.jetbrains.plugins.terminal.ShellTerminalWidget
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -769,7 +770,9 @@ class OpenCodeService(private val project: Project) : Disposable {
     private fun createTerminalUIInternal(h: String, p: Int, pwd: String?, cont: Boolean = true, command: String? = null, customBasePath: String? = null) {
         val t = "$OPEN_CODE_TAB_PREFIX($p)"
         val wd = customBasePath ?: project.basePath
-        val w = TerminalView.getInstance(project).createLocalShellWidget(wd, t)
+        val w = ShellTerminalWidget.toShellJediTermWidgetOrThrow(
+            TerminalToolWindowManager.getInstance(project).createShellWidget(wd, t, true, true)
+        )
         OpenCodeTerminalLinkFilter.install(project, w)
         val f = OpenCodeTerminalVirtualFile(t)
         terminalVirtualFile = f; OpenCodeTerminalFileEditorProvider.registerWidget(f, w)

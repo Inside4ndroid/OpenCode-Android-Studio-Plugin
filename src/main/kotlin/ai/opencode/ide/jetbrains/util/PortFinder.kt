@@ -4,6 +4,7 @@ import com.intellij.openapi.diagnostic.Logger
 import java.io.IOException
 import java.net.Proxy
 import java.net.ServerSocket
+import java.net.URI
 
 /**
  * Utility for finding available ports for OpenCode server.
@@ -74,7 +75,7 @@ object PortFinder {
         password: String? = null
     ): Boolean {
         return try {
-            val url = java.net.URL("http://$hostname:$port/global/health")
+            val url = URI("http", null, hostname, port, "/global/health", null, null).toURL()
             val connection = url.openConnection(Proxy.NO_PROXY) as java.net.HttpURLConnection
             connection.connectTimeout = CONNECT_TIMEOUT_MS
             connection.readTimeout = READ_TIMEOUT_MS

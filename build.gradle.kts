@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.inside4ndroid.opencodestudio"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
@@ -41,11 +41,11 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <h2>OpenCode ASP 1.0.0</h2>
+            <h2>OpenCode ASP 1.0.1</h2>
             <ul>
-                <li>Initial release of OpenCode ASP, the OpenCode Android Studio Plugin.</li>
-                <li>Launch or connect to OpenCode sessions from Android Studio.</li>
-                <li>Share editor and project context, review file diffs, and authenticate with password-protected OpenCode servers.</li>
+                <li>Fix context sharing from the Project View and terminal input fallback.</li>
+                <li>Improve diff review recovery for OpenCode CLI v2 edits and files also detected as user-edited.</li>
+                <li>Update IntelliJ Platform APIs for improved compatibility with newer IDE versions.</li>
             </ul>
         """.trimIndent()
     }
