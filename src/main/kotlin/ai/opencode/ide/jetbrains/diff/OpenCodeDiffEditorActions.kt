@@ -19,16 +19,15 @@ private fun findEntryIndex(entries: List<DiffEntry>, filePath: String): Int {
 private fun closeCurrentDiffIfPossible(e: AnActionEvent) {
     val project = e.project ?: return
 
-    // 尝试获取当前的 VirtualFile（Diff 视图通常是一个虚拟文件）
+    // The diff view is usually represented by a virtual file.
     val virtualFile = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
     
-    // 只要文件存在，就尝试关闭它。DiffVirtualFile 通常是临时的。
-    // 如果是在普通编辑器里（不太可能，因为 Action 只在 Diff 上下文显示），关闭也是合理的。
+    // DiffVirtualFile is usually temporary; closing a regular editor file is also reasonable here.
     FileEditorManager.getInstance(project).closeFile(virtualFile)
 }
 
 private fun openNextDiff(project: com.intellij.openapi.project.Project, previousIndex: Int, closeEvent: AnActionEvent?) {
-    // 1. 无论是否还有剩余，都先关闭当前窗口
+    // Close the current window before opening another diff, if any remain.
     if (closeEvent != null) {
         closeCurrentDiffIfPossible(closeEvent)
     }
@@ -40,10 +39,10 @@ private fun openNextDiff(project: com.intellij.openapi.project.Project, previous
         return
     }
 
-    // 2. 还有剩余 Diff，打开新的 Diff 窗口
+    // Open the next diff when entries remain.
     val nextIndex = previousIndex.coerceIn(0, remaining.lastIndex)
     
-    // 使用 invokeLater 确保关闭操作完成后再打开新窗口，体验更流畅
+    // Wait until the close operation completes before opening the next window.
     ApplicationManager.getApplication().invokeLater {
         project.service<DiffViewerService>().showMultiFileDiff(remaining, nextIndex)
     }
@@ -65,12 +64,13 @@ class AcceptFromDiffEditorAction(private val filePath: String) : AnAction() {
 
         val entry = sessionManager.getDiffForFile(filePath)
         if (entry != null) {
-            // Use the callback to navigate after accept completes
-            sessionManager.acceptDiff(entry) { success ->
+            // Navigate after the accept operation completes.
+            sessionManager.acceptDiff(entry) { success, error ->
                 if (success) {
                     openNextDiff(project, previousIndex, e)
                 } else {
-                    Messages.showWarningDialog(project, "Failed to stage $filePath", "Accept Failed")
+                    val details = error?.let { "\n\n$it" }.orEmpty()
+                    Messages.showWarningDialog(project, "Failed to stage $filePath$details", "Accept Failed")
                 }
             }
         } else {
@@ -100,7 +100,7 @@ class RejectFromDiffEditorAction(private val filePath: String) : AnAction() {
         val sessionManager = project.service<SessionManager>()
         val entry: DiffEntry = sessionManager.getDiffForFile(filePath) ?: return
 
-        // Build confirmation message based on file state
+        // Build the confirmation message based on the file state.
         val isNewFile = entry.isNewFile
         val hasUserEdits = entry.hasUserEdits
         
@@ -113,7 +113,7 @@ class RejectFromDiffEditorAction(private val filePath: String) : AnAction() {
                 append("The file will be restored to its state before OpenCode modified it.")
             }
             
-            // Per design doc: warn if user has edits in this file
+            // Warn if the user also edited this file.
             if (hasUserEdits) {
                 append("\n\n")
                 append("WARNING: You have also edited this file. Your changes will be lost!")
@@ -132,7 +132,7 @@ class RejectFromDiffEditorAction(private val filePath: String) : AnAction() {
         val before = sessionManager.getAllDiffEntries()
         val previousIndex = findEntryIndex(before, filePath)
 
-        // Use the callback to navigate after reject completes (no more ProgressManager race)
+        // Navigate after the reject operation completes.
         sessionManager.rejectDiff(entry) { success ->
             if (success) {
                 openNextDiff(project, previousIndex, e)

@@ -1,4 +1,4 @@
-# OpenCode JetBrains Diff Feature Design
+# OpenCode ASP Diff Feature Design
 
 ## Overview
 

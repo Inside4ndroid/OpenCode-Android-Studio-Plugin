@@ -158,7 +158,7 @@ open class OpenCodeApiClient(
                 val duration = System.currentTimeMillis() - startTime
                 if (response.isSuccessful) {
                     logger.debug("[API] Success: ${request.method} ${request.url} (took ${duration}ms)")
-                    // 强制使用 UTF-8 解码，避免服务端未设置 charset 导致中文乱码或内容丢失
+                    // Decode explicitly as UTF-8 in case the server omits a charset.
                     val bodyBytes = response.body?.bytes()
                     val jsonString = bodyBytes?.toString(Charsets.UTF_8)
                     gson.fromJson(jsonString, type)
@@ -182,7 +182,7 @@ open class OpenCodeApiClient(
                 val duration = System.currentTimeMillis() - startTime
                 if (response.isSuccessful) {
                     logger.debug("[API] Success: ${request.method} ${request.url} (took ${duration}ms)")
-                    // 强制使用 UTF-8 解码，避免服务端未设置 charset 导致中文乱码或内容丢失
+                    // Decode explicitly as UTF-8 in case the server omits a charset.
                     val bodyBytes = response.body?.bytes()
                     val jsonString = bodyBytes?.toString(Charsets.UTF_8)
                     gson.fromJson(jsonString, clazz)

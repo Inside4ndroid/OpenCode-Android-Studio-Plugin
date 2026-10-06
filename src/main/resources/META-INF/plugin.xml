@@ -1,21 +1,33 @@
 <!-- Plugin Configuration File: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-  <id>ai.opencode.ide.jetbrains</id>
-  <name>OpenCode UI</name>
-  <vendor email="hhlai1990@gmail.com" url="https://github.com/LaiZhou/OpenCode_UI">laizhou</vendor>
+  <id>com.inside4ndroid.opencodestudio</id>
+  <name>OpenCode ASP</name>
+  <vendor email="inside4ndroid.techsup@gmail.com" url="https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin">Inside4ndroid</vendor>
   
 
   <description><![CDATA[
-    <b>OpenCode UI - AI Coding Agent for JetBrains IDEs</b><br><br>
-    
-    Seamlessly integrates <a href="https://opencode.ai">OpenCode</a> directly into your workflow.<br><br>
-    
-    <b>Key Features:</b><br>
+    <h2>OpenCode ASP - OpenCode Android Studio Plugin</h2>
+    <p>Seamlessly integrate <a href="https://opencode.ai">OpenCode</a>, the open-source AI coding agent, into your Android Studio workflow.</p>
+
+    <h2>Key Features</h2>
     <ul>
-        <li><b>Quick Launch:</b> Connect to existing OpenCode server (e.g., OpenCode Desktop) or create new terminal with <code>Cmd+Esc</code> / <code>Ctrl+\</code>. Supports automatic authentication and optional password input.</li>
-        <li><b>Context Sharing:</b> Send current file, selection, or Project View items to the agent with <code>Opt+Cmd+K</code> / <code>Ctrl+Alt+K</code>.</li>
-        <li><b>Native Diff Review:</b> Review AI-generated changes in a multi-file diff viewer. Accept stages changes (<code>git add</code>), Reject restores original content. Automatic snapshots ensure you can always recover previous versions.</li>
+        <li><b>Quick Launch:</b> Connect to an existing OpenCode server, including OpenCode Desktop, or start a local terminal with <code>Cmd+Esc</code> / <code>Ctrl+\</code>. Authentication is detected automatically when available; enter a server password when required and optionally save it in the IDE Password Safe.</li>
+        <li><b>Context Sharing:</b> Send the current file, selected code, or Project View files to OpenCode with <code>Opt+Cmd+K</code> / <code>Ctrl+Alt+K</code>.</li>
+        <li><b>Native Diff Review:</b> Review AI-generated changes across multiple files in the IDE. Accept a change to write and stage it with <code>git add</code>, or reject it to restore the previous content. Local History snapshots provide an additional recovery path.</li>
+        <li><b>Task Notifications:</b> Get notified when an OpenCode task finishes.</li>
+        <li><b>Session Resume:</b> Continue your recent OpenCode session when starting a terminal.</li>
+        <li><b>Smart File Links:</b> Open file references such as <code>@src/Main.kt#L10-20</code> directly in the editor.</li>
     </ul>
+
+    <h2>Getting Started</h2>
+    <ol>
+        <li>Install <a href="https://opencode.ai/download">OpenCode CLI</a> (for example, with <code>npm install -g opencode-ai</code>) and Git.</li>
+        <li>Press <code>Cmd+Esc</code> on macOS or <code>Ctrl+\</code> on Windows/Linux to open the connection dialog.</li>
+        <li>Connect to an existing server or start a local session. OpenCode CLI v2 requires a server password.</li>
+        <li>Use <code>Opt+Cmd+K</code> / <code>Ctrl+Alt+K</code> to send code context to OpenCode.</li>
+    </ol>
+    <p>Requires Android Studio 2025.2 or later and the bundled Terminal plugin. See the <a href="https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin">project documentation</a> for setup details.</p>
+
   ]]></description>
 
   <depends>com.intellij.modules.platform</depends>
@@ -28,7 +40,7 @@
             class="ai.opencode.ide.jetbrains.QuickLaunchAction"
             text="Open OpenCode"
             description="Open or focus the OpenCode terminal"
-            icon="/icons/opencode.svg">
+            icon="/icons/opencode.png">
       <add-to-group group-id="ToolsMenu" anchor="first"/>
       <keyboard-shortcut keymap="$default" first-keystroke="control BACK_SLASH"/>
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="meta ESCAPE"/>
@@ -38,7 +50,7 @@
     <action id="OpenCode.AddLines"
             class="ai.opencode.ide.jetbrains.SendSelectionToTerminalAction"
             text="Add lines to OpenCode Terminal"
-            icon="/icons/opencode.svg">
+            icon="/icons/opencode.png">
       <add-to-group group-id="EditorPopupMenu" anchor="last"/>
       <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
@@ -48,7 +60,7 @@
     <action id="OpenCode.AddFile"
             class="ai.opencode.ide.jetbrains.SendSelectionToTerminalAction"
             text="Add to OpenCode Terminal"
-            icon="/icons/opencode.svg">
+            icon="/icons/opencode.png">
       <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
       <keyboard-shortcut keymap="$default" first-keystroke="control alt K"/>
       <keyboard-shortcut keymap="Mac OS X" first-keystroke="alt meta K"/>
@@ -71,7 +83,7 @@
 
     <toolWindow id="OpenCode"
                 factoryClass="ai.opencode.ide.jetbrains.OpenCodeToolWindowFactory"
-                icon="/icons/opencode.svg"
+                icon="/icons/opencode.png"
                 anchor="right"/>
 
   </extensions>

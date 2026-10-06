@@ -1,6 +1,6 @@
-# OpenCode Plugin Testing Strategy
+# OpenCode ASP Testing Strategy
 
-This document describes the testing strategy for the OpenCode JetBrains plugin, including the automated test architecture, core business-logic coverage, and manual regression cases.
+This document describes the testing strategy for OpenCode ASP, including the automated test architecture, core business-logic coverage, and manual regression cases.
 
 ---
 

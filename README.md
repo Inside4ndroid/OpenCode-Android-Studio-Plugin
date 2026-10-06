@@ -1,9 +1,9 @@
-# OpenCode JetBrains Plugin
+# OpenCode ASP (OpenCode Android Studio Plugin)
 
-[![JetBrains Plugin](https://img.shields.io/badge/JetBrains-Plugin-blue)](https://plugins.jetbrains.com)
+[![Android Studio Plugin](https://img.shields.io/badge/Android%20Studio-Plugin-blue)](https://developer.android.com/studio)
 [![OpenCode](https://img.shields.io/badge/OpenCode-AI%20Agent-green)](https://opencode.ai)
 
-A JetBrains IDE plugin that integrates [OpenCode](https://opencode.ai) — the open-source AI coding agent — directly into your development workflow.
+An Android Studio plugin that integrates [OpenCode](https://opencode.ai), the open-source AI coding agent, into your development workflow.
 
 ## Features
 
@@ -38,15 +38,16 @@ Click the **OpenCode** icon in the right sidebar to instantly focus or create an
 
 ## Requirements
 
-- **JetBrains IDE**: IntelliJ IDEA, WebStorm, PyCharm, etc. (2025.2+)
-- **OpenCode CLI**: Install via `npm install -g opencode` or see [opencode.ai/download](https://opencode.ai/download)
+- **Android Studio**: Version 2025.2 or later
+- **OpenCode CLI**: Install via `npm install -g opencode-ai` or see [opencode.ai/download](https://opencode.ai/download)
+- **Git**: Install Git and open a project inside a Git repository to use **Accept**, which stages the reviewed file.
 - **CLI compatibility**: The plugin detects OpenCode CLI v1 and v2 automatically. For v2, it starts an API server with `serve` and connects the terminal UI to that server.
 
 ## Installation
 
-**Plugin URL**: https://plugins.jetbrains.com/plugin/29744-opencode-ui
+**Plugin repository**: https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin
 
-Open **Settings** → **Plugins** → **Marketplace** → Search "OpenCode" → **Install**
+Install the built plugin ZIP from **Settings** → **Plugins** → **⚙** → **Install Plugin from Disk**.
 
 ## Usage
 
@@ -106,7 +107,7 @@ When OpenCode edits files, the plugin opens a native IDE diff viewer.
 
 The plugin sends a system notification when OpenCode finishes a task (transitions from Busy to Idle). This allows you to switch to other work while the AI is generating code, and be notified immediately when it's done.
 
-> **Tip**: To receive desktop notifications, please ensure your operating system allows notifications for the JetBrains IDE (e.g., on macOS: *System Settings > Notifications > IntelliJ IDEA*).
+> **Tip**: To receive desktop notifications, allow notifications for Android Studio in your operating system settings.
 
 ### 6. Smart File Links
 
@@ -166,7 +167,7 @@ Try closing the "OpenCode({port})" terminal tab and pressing `Cmd+Esc` or `Ctrl+
 ## Support
 
 - [OpenCode Documentation](https://opencode.ai/docs)
-- [GitHub Issues](https://github.com/anomalyco/opencode/issues)
+- [OpenCode ASP Issues](https://github.com/Inside4ndroid/OpenCode-Android-Studio-Plugin/issues)
 - [Discord Community](https://opencode.ai/discord)
 
 ## License

@@ -60,6 +60,8 @@ class OpenCodeService(private val project: Project) : Disposable {
         private const val OPEN_CODE_TAB_PREFIX = "OpenCode"
         private const val RETRY_INTERVAL_MS = 5000L
         private const val BARRIER_TIMEOUT_MS = 2000L
+        private const val V2_DIFF_RETRY_DELAY_MS = 1000L
+        private const val V2_DIFF_RETRY_WINDOW_MS = 30000L
         internal var DEBOUNCE_MS = 1500L
     }
 
@@ -93,6 +95,13 @@ class OpenCodeService(private val project: Project) : Disposable {
     private val turnIdleWaiting = java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     private val turnBarrierTasks = java.util.concurrent.ConcurrentHashMap<String, ScheduledFuture<*>>()
     private val turnLastTriggerTimes = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val pendingV2DiffTurns = java.util.concurrent.ConcurrentHashMap<String, PendingV2DiffTurn>()
+    private val pendingV2DiffTasks = java.util.concurrent.ConcurrentHashMap<String, ScheduledFuture<*>>()
+
+    private data class PendingV2DiffTurn(
+        val snapshot: TurnSnapshot,
+        val startedAt: Long
+    )
 
     val sessionManager: SessionManager get() = _sessionManager ?: project.service()
     private val diffViewerService: DiffViewerService get() = _diffViewerService ?: project.service()
@@ -164,17 +173,33 @@ class OpenCodeService(private val project: Project) : Disposable {
 
     fun pasteToTerminal(text: String): Boolean {
         if (text.isBlank()) return false
-        apiClient?.let { client -> 
-            AppExecutorUtil.getAppExecutorService().submit { 
-                try { 
-                    if (!client.tuiAppendPrompt(text)) logger.warn("[Paste] API failed to append prompt")
-                } catch (e: Exception) { 
-                    logger.warn("[Paste] API error: ${e.message}") 
-                } 
+        val widget = terminalEditor?.terminalWidget
+        val client = apiClient
+        if (client == null && widget == null) return false
+
+        AppExecutorUtil.getAppExecutorService().submit {
+            val appendedByApi = try {
+                client?.tuiAppendPrompt(text) == true
+            } catch (e: Exception) {
+                logger.warn("[Paste] API error: ${e.message}")
+                false
             }
-            return true 
+
+            if (appendedByApi) return@submit
+
+            if (widget == null) {
+                logger.warn("[Paste] OpenCode API rejected the prompt and no terminal widget is available")
+                return@submit
+            }
+
+            try {
+                widget.executeWithTtyConnector { connector -> connector.write(text) }
+                logger.info("[Paste] Sent context through the terminal input")
+            } catch (e: Exception) {
+                logger.warn("[Paste] Terminal input failed: ${e.message}", e)
+            }
         }
-        return false
+        return true
     }
 
     fun addConnectionListener(listener: (Boolean) -> Unit) {
@@ -199,38 +224,23 @@ class OpenCodeService(private val project: Project) : Disposable {
                 val sId = event.properties.sessionID
                 val status = event.properties.status
                 if (status.isBusy()) {
-                    val started = sessionManager.onTurnStart()
-                    if (started) clearTurnState(sId)
+                    handleTurnStarted(sId)
                 } else if (status.isIdle()) {
-                    // Capture snapshot BEFORE attempting barrier
-                    val snapshot = sessionManager.onTurnEnd()
-                    if (snapshot != null) {
-                        turnSnapshots[sId] = snapshot
-                        logger.info("[OpenCode] Turn #${snapshot.turnNumber} snapshot captured")
-                        sendNotification(
-                            "OpenCode Task Completed",
-                            "Session is now idle. Checking for changes...",
-                            replacePrevious = true
-                        )
-                    }
-                    turnIdleWaiting[sId] = true
-                    attemptBarrierTrigger(sId)
+                    handleTurnEnded(sId)
                 }
             }
             is SessionIdleEvent -> {
-                val sId = event.properties.sessionID
-                val snapshot = sessionManager.onTurnEnd()
-                if (snapshot != null) {
-                    turnSnapshots[sId] = snapshot
-                    logger.info("[OpenCode] Turn #${snapshot.turnNumber} snapshot captured (via idle event)")
-                    sendNotification(
-                        "OpenCode Task Completed",
-                        "Session is now idle. Checking for changes...",
-                        replacePrevious = true
-                    )
+                handleTurnEnded(event.properties.sessionID)
+            }
+            is SessionExecutionEvent -> {
+                val sessionId = event.sessionID
+                if (sessionId == null) {
+                    logger.warn("[OpenCode] Ignoring ${event.type} event without a session ID")
+                } else if (event.type == "session.execution.started") {
+                    handleTurnStarted(sessionId)
+                } else {
+                    handleTurnEnded(sessionId, fetchImmediately = true)
                 }
-                turnIdleWaiting[sId] = true
-                attemptBarrierTrigger(sId)
             }
             is FileEditedEvent -> sessionManager.onFileEdited(event.properties.file)
             is MessageUpdatedEvent -> {
@@ -251,12 +261,52 @@ class OpenCodeService(private val project: Project) : Disposable {
         }
     }
 
+    private fun handleTurnStarted(sessionId: String) {
+        if (sessionManager.onTurnStart()) clearTurnState(sessionId)
+    }
+
+    private fun handleTurnEnded(sessionId: String, fetchImmediately: Boolean = false) {
+        if (fetchImmediately) sessionManager.setAwaitingLateChanges(true)
+        val snapshot = sessionManager.onTurnEnd()
+        if (snapshot != null) {
+            turnSnapshots[sessionId] = snapshot
+            if (fetchImmediately) {
+                pendingV2DiffTurns[sessionId] = PendingV2DiffTurn(snapshot, System.currentTimeMillis())
+            }
+            logger.info("[OpenCode] Turn #${snapshot.turnNumber} snapshot captured")
+            sendNotification(
+                "OpenCode Task Completed",
+                "Session is now idle. Checking for changes...",
+                replacePrevious = true
+            )
+        }
+        if (fetchImmediately) {
+            turnIdleWaiting[sessionId] = false
+            turnBarrierTasks.remove(sessionId)?.cancel(false)
+            val completedSnapshot = turnSnapshots[sessionId]
+            if (completedSnapshot != null) {
+                logger.info("[OpenCode] Turn #${completedSnapshot.turnNumber} V2 execution completed; fetching diffs")
+                triggerDiffFetch(sessionId, completedSnapshot)
+            } else {
+                sessionManager.setAwaitingLateChanges(false)
+                logger.warn("[OpenCode] V2 execution completed without an active turn snapshot")
+            }
+            return
+        }
+        turnIdleWaiting[sessionId] = true
+        attemptBarrierTrigger(sessionId)
+    }
+
     private fun clearTurnState(sessionId: String) {
         val oldSnapshot = turnSnapshots.remove(sessionId)
         turnMessageIds.remove(sessionId)
         turnPendingPayloads.remove(sessionId)
         turnIdleWaiting.remove(sessionId)
         turnBarrierTasks.remove(sessionId)?.cancel(false)
+        pendingV2DiffTasks.remove(sessionId)?.cancel(false)
+        if (pendingV2DiffTurns.remove(sessionId) != null) {
+            sessionManager.setAwaitingLateChanges(false)
+        }
         turnLastTriggerTimes.remove(sessionId)
         
         if (oldSnapshot != null) {
@@ -344,8 +394,11 @@ class OpenCodeService(private val project: Project) : Disposable {
     private fun fetchAndShowDiffs(sessionId: String, snapshot: TurnSnapshot) {
         val client = apiClient ?: return
         val path = project.basePath ?: return
+        val isPendingV2Turn = pendingV2DiffTurns[sessionId]?.snapshot?.turnNumber == snapshot.turnNumber
+        val processingSnapshot = if (isPendingV2Turn) sessionManager.includeLateChanges(snapshot) else snapshot
         val messageId = turnMessageIds[sessionId]
         val payload = turnPendingPayloads[sessionId]
+        var foundDiffs = false
         
         logger.info("[OpenCode] Turn #${snapshot.turnNumber} fetchAndShowDiffs: messageId=$messageId, payloadSize=${payload?.size ?: 0}")
         
@@ -366,7 +419,13 @@ class OpenCodeService(private val project: Project) : Disposable {
                     diffs = payload
                 }
                 
-                // Priority 3: Fallback to session summary (last resort)
+                // V2 execution events do not include the legacy assistant message ID.
+                if (diffs.isEmpty() && messageId == null && payload == null) {
+                    logger.info("[OpenCode] Turn #${snapshot.turnNumber} No message ID or SSE diff; requesting session diff")
+                    diffs = client.getSessionDiff(sessionId, path)
+                }
+
+                // Priority 4: Fallback to session summary (last resort)
                 if (diffs.isEmpty() && messageId == null) {
                     logger.warn("[OpenCode] Turn #${snapshot.turnNumber} No messageId or payload, trying session summary")
                     client.getSession(sessionId, path)?.summary?.diffs?.let { diffs = it }
@@ -377,7 +436,16 @@ class OpenCodeService(private val project: Project) : Disposable {
                 // We rely on Server Authoritative logic: if Server missed a file and we have no history of it, we skip it.
                 val serverFiles = diffs.map { it.file }
                 val knownFiles = sessionManager.getKnownFilePaths()
-                val filesToRefresh = (serverFiles + knownFiles).distinct()
+                val filesToRefresh = (
+                    serverFiles +
+                        processingSnapshot.serverEditedFiles +
+                        processingSnapshot.vfsChangedFiles +
+                        processingSnapshot.aiCreatedFiles +
+                        processingSnapshot.capturedBeforeContent.keys +
+                        sessionManager.getLiveVfsChangedFiles() +
+                        sessionManager.getLiveAiCreatedFiles() +
+                        knownFiles
+                    ).distinct()
                 
                 if (filesToRefresh.isNotEmpty()) {
                     // Create dummy FileDiffs just to pass the filename
@@ -390,9 +458,15 @@ class OpenCodeService(private val project: Project) : Disposable {
 
                 // Process using the snapshot via SessionManager (centralized logic)
                 // Pass late VFS events to help with affinity checks
-                val entries = sessionManager.getProcessedDiffs(diffs, snapshot, lateVfsEvents, lateAiCreatedFiles)
+                val latestSnapshot = if (isPendingV2Turn) {
+                    sessionManager.includeLateChanges(processingSnapshot)
+                } else {
+                    processingSnapshot
+                }
+                val entries = sessionManager.getProcessedDiffs(diffs, latestSnapshot, lateVfsEvents, lateAiCreatedFiles)
                 
                 if (entries.isNotEmpty()) {
+                    foundDiffs = true
                     sessionManager.updateKnownState(entries.map { it.file })
                     
                     logger.info("[OpenCode] Turn #${snapshot.turnNumber} Showing ${entries.size} diffs")
@@ -406,8 +480,44 @@ class OpenCodeService(private val project: Project) : Disposable {
                 logger.error("[OpenCode] Turn #${snapshot.turnNumber} Diff fetch error", e)
             } finally {
                 turnPendingPayloads.remove(sessionId)
+                if (isPendingV2Turn) {
+                    if (foundDiffs) {
+                        completePendingV2DiffTurn(sessionId, snapshot.turnNumber)
+                    } else {
+                        scheduleV2DiffRetry(sessionId, snapshot.turnNumber)
+                    }
+                }
             }
         }
+    }
+
+    private fun scheduleV2DiffRetry(sessionId: String, turnNumber: Int) {
+        val pending = pendingV2DiffTurns[sessionId] ?: return
+        if (pending.snapshot.turnNumber != turnNumber) return
+
+        val elapsed = System.currentTimeMillis() - pending.startedAt
+        if (elapsed >= V2_DIFF_RETRY_WINDOW_MS) {
+            logger.info("[OpenCode] Turn #$turnNumber late diff retry window expired")
+            completePendingV2DiffTurn(sessionId, turnNumber)
+            return
+        }
+
+        val task = AppExecutorUtil.getAppScheduledExecutorService().schedule({
+            val current = pendingV2DiffTurns[sessionId]
+            if (current?.snapshot?.turnNumber == turnNumber) {
+                logger.info("[OpenCode] Turn #$turnNumber retrying diff check for late VFS changes")
+                fetchAndShowDiffs(sessionId, current.snapshot)
+            }
+        }, V2_DIFF_RETRY_DELAY_MS, TimeUnit.MILLISECONDS)
+        pendingV2DiffTasks.put(sessionId, task)?.cancel(false)
+    }
+
+    private fun completePendingV2DiffTurn(sessionId: String, turnNumber: Int) {
+        val pending = pendingV2DiffTurns[sessionId]
+        if (pending?.snapshot?.turnNumber != turnNumber) return
+        pendingV2DiffTurns.remove(sessionId, pending)
+        pendingV2DiffTasks.remove(sessionId)?.cancel(false)
+        sessionManager.setAwaitingLateChanges(false)
     }
     
     // createSyntheticDiff removed - logic moved to SessionManager
@@ -488,6 +598,7 @@ class OpenCodeService(private val project: Project) : Disposable {
     private fun disconnectAndReset() {
         connectionManagerTask?.cancel(true); sseListener?.disconnect(); isConnected.set(false); isConnecting.set(false)
         turnMessageIds.clear(); turnPendingPayloads.clear(); turnSnapshots.clear(); turnIdleWaiting.clear(); turnBarrierTasks.values.forEach { it.cancel(false) }; turnBarrierTasks.clear()
+        pendingV2DiffTasks.values.forEach { it.cancel(false) }; pendingV2DiffTasks.clear(); pendingV2DiffTurns.clear(); sessionManager.setAwaitingLateChanges(false)
         terminateProcess()
         terminalVirtualFile?.let { OpenCodeTerminalFileEditorProvider.disposeWidget(it, null) }
         terminalVirtualFile = null; terminalEditor = null; webVirtualFile = null; port = null; hostname = "127.0.0.1"; apiClient = null
@@ -964,7 +1075,7 @@ class OpenCodeService(private val project: Project) : Disposable {
     private fun schedulePasteAttempt(t: String, l: Int, d: Long) { 
         if (l <= 0 || project.isDisposed) {
             if (l <= 0 && !project.isDisposed) {
-                logger.warn("[Paste] All retries exhausted for: $t")
+                logger.warn("[Paste] All retries exhausted for context reference")
             }
             return
         }

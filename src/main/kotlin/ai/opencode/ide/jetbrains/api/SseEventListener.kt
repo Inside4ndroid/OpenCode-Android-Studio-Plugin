@@ -48,6 +48,7 @@ class SseEventListener(
     private var call: Call? = null
     private val isConnected = AtomicBoolean(false)
     private val shouldReconnect = AtomicBoolean(true)
+    private val useV2EventEndpoint = AtomicBoolean(false)
     private var reconnectTask: ScheduledFuture<*>? = null
     private var reconnectAttemptCount = 0
 
@@ -60,14 +61,16 @@ class SseEventListener(
 
     private fun doConnect() {
         reconnectAttemptCount++
+        val useV2Endpoint = useV2EventEndpoint.get()
         val encodedPath = java.net.URLEncoder.encode(projectPath, "UTF-8")
-        val url = "$baseUrl/event?directory=$encodedPath"
+        val url = if (useV2Endpoint) "$baseUrl/api/event" else "$baseUrl/event?directory=$encodedPath"
 
         logger.info("[SSE] Connecting to $url (attempt #$reconnectAttemptCount)...")
         val request = Request.Builder()
             .url(url)
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-cache")
+            .header("X-OpenCode-Directory", projectPath)
             .build()
 
         call = client.newCall(request)
@@ -88,6 +91,24 @@ class SseEventListener(
                     onError(IOException("SSE failed: ${response.code}"))
                     onDisconnected()
                     if (shouldReconnect.get()) scheduleReconnect()
+                    return
+                }
+
+                val contentType = response.header("Content-Type").orEmpty()
+                if (!contentType.startsWith("text/event-stream", ignoreCase = true)) {
+                    response.close()
+                    isConnected.set(false)
+                    if (!useV2Endpoint && response.code == 200) {
+                        logger.info("[SSE] Legacy event route returned $contentType; switching to the v2 event route")
+                        useV2EventEndpoint.set(true)
+                        doConnect()
+                    } else {
+                        val error = IOException("Unexpected SSE content type: ${contentType.ifBlank { "missing" }}")
+                        logger.error("[SSE] Handshake returned a non-event response", error)
+                        onError(error)
+                        onDisconnected()
+                        if (shouldReconnect.get()) scheduleReconnect()
+                    }
                     return
                 }
 
@@ -122,11 +143,13 @@ class SseEventListener(
 
     private fun parseAndDispatchEvent(json: String) {
         try {
-            logger.debug("[SSE-Raw] $json")
             val event = OpenCodeEventParser.parse(json)
-            if (event != null) onEvent(event)
+            if (event != null) {
+                logger.info("[SSE] Received event: ${event.type}")
+                onEvent(event)
+            }
         } catch (e: Exception) {
-            logger.debug("[SSE] Parse error: ${e.message}. JSON: $json")
+            logger.warn("[SSE] Failed to parse event: ${e.message}")
         }
     }
 

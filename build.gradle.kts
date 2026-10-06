@@ -4,8 +4,8 @@ plugins {
     id("org.jetbrains.intellij.platform") version "2.10.2"
 }
 
-group = "ai.opencode"
-version = "1.1.0"
+group = "com.inside4ndroid.opencodestudio"
+version = "1.0.0"
 
 repositories {
     mavenCentral()
@@ -41,10 +41,11 @@ intellijPlatform {
         }
 
         changeNotes = """
-            <h2>1.1.0</h2>
+            <h2>OpenCode ASP 1.0.0</h2>
             <ul>
-                <li>New: Custom base path support — added a "Custom base path" dropdown in the connection dialog, allowing users to specify a working directory for OpenCode terminal sessions. Automatically populated with detected project modules.</li>
-                <li>Fix: Fixed the OpenCode CLI install command in README to match official download instructions.</li>
+                <li>Initial release of OpenCode ASP, the OpenCode Android Studio Plugin.</li>
+                <li>Launch or connect to OpenCode sessions from Android Studio.</li>
+                <li>Share editor and project context, review file diffs, and authenticate with password-protected OpenCode servers.</li>
             </ul>
         """.trimIndent()
     }

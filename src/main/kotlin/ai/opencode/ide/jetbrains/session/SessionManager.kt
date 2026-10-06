@@ -6,7 +6,7 @@ import ai.opencode.ide.jetbrains.util.PathUtil
 import java.io.File
 
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.OSProcessHandler
+import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.history.Label
 import com.intellij.history.LocalHistory
 import com.intellij.openapi.Disposable
@@ -29,6 +29,7 @@ import com.intellij.openapi.vfs.VirtualFileListener
 import com.intellij.openapi.vfs.VirtualFileMoveEvent
 import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.util.concurrency.AppExecutorUtil
+import java.nio.charset.Charset
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -52,6 +53,9 @@ open class SessionManager(private val project: Project) : Disposable {
     /** True while AI is actively working (between busy and idle) */
     @Volatile
     private var isBusy = false
+
+    @Volatile
+    private var awaitingLateChanges = false
     
     /** LocalHistory label created at turn start, used for reliable restore */
     private var baselineLabel: Label? = null
@@ -95,7 +99,7 @@ open class SessionManager(private val project: Project) : Disposable {
     
     private val documentListener = object : DocumentListener {
         override fun documentChanged(event: DocumentEvent) {
-            if (!isBusy) return
+            if (!isBusy && !awaitingLateChanges) return
             val cmd = CommandProcessor.getInstance().currentCommandName
             if (!cmd.isNullOrEmpty()) {
                 FileDocumentManager.getInstance().getFile(event.document)?.let {
@@ -382,7 +386,10 @@ open class SessionManager(private val project: Project) : Disposable {
 
         // 1. VFS Rescue: Find files changed/deleted locally but missed by Server
         // Only rescue files that have STRONG AI affinity (serverEditedFiles) or physical deletion
-        val rescueCandidates = snapshot.vfsChangedFiles + snapshot.capturedBeforeContent.keys + extraVfsEvents
+        val rescueCandidates = snapshot.vfsChangedFiles +
+            snapshot.serverEditedFiles +
+            snapshot.capturedBeforeContent.keys +
+            extraVfsEvents
         val serverFileNames = validServerDiffs.map { it.file }.toSet()
 
         val vfsMissing = rescueCandidates.filter { vfsFile ->
@@ -398,8 +405,10 @@ open class SessionManager(private val project: Project) : Disposable {
                 return@filter false
             }
 
-            // CRITICAL: Skip if user edited this file - user operations should NOT be rescued as AI diffs
-            if (vfsFile in snapshot.userEditedFiles) {
+            // User-only changes are not OpenCode diffs. Keep files explicitly reported by OpenCode
+            // so the viewer can show the combined change and warn before restoring user edits.
+            val isServerClaimed = vfsFile in snapshot.serverEditedFiles
+            if (vfsFile in snapshot.userEditedFiles && !isServerClaimed) {
                 logger.info("[Rescue] $vfsFile -> SKIP: User edited this file")
                 return@filter false
             }
@@ -408,7 +417,6 @@ open class SessionManager(private val project: Project) : Disposable {
             val exists = File(absPath).exists()
 
             // Determine if this is truly an AI operation by checking various signals
-            val isServerClaimed = vfsFile in snapshot.serverEditedFiles
             val isVfsCreated = vfsFile in snapshot.aiCreatedFiles || vfsFile in extraAiCreatedFiles
             // Check if we can resolve the before content (from Capture, LocalHistory, or KnownState)
             val hasCapturedBefore = getSnapshotBeforeContent(vfsFile, snapshot) != null
@@ -483,10 +491,11 @@ open class SessionManager(private val project: Project) : Disposable {
             val before = entry.beforeContent
             val after = entry.diff.after
 
-            // A. User Safety (Highest Priority)
-            // If the user edited the file during this turn, we MUST NOT show the AI's diff
-            // to avoid overwriting user work or showing confusing conflict states.
-            if (entry.hasUserEdits) {
+            // A. User Safety
+            // Do not show user-only edits as OpenCode changes. Server-claimed edits remain reviewable;
+            // they are labeled and Reject asks for confirmation before restoring the original file.
+            val isServerClaimed = file in snapshot.serverEditedFiles
+            if (entry.hasUserEdits && !isServerClaimed) {
                 logger.info("[DiffFilter] $file -> SKIP: User edited this file.")
                 return@filter false
             }
@@ -503,7 +512,6 @@ open class SessionManager(private val project: Project) : Disposable {
             // BUT: Ideally we should just check if it was touched by VFS or Server in THIS turn.
             
             // Check for "Signal Affinity": Did this file have any activity in this turn?
-            val isServerClaimed = file in snapshot.serverEditedFiles
             val isVfsTouched = file in snapshot.vfsChangedFiles || 
                               file in snapshot.aiCreatedFiles || 
                               file in snapshot.capturedBeforeContent.keys ||
@@ -660,6 +668,43 @@ open class SessionManager(private val project: Project) : Disposable {
     fun getLiveAiCreatedFiles(): Set<String> {
         return aiCreatedFiles.toSet()
     }
+
+    fun setAwaitingLateChanges(awaiting: Boolean) {
+        awaitingLateChanges = awaiting
+    }
+
+    fun includeLateChanges(snapshot: TurnSnapshot): TurnSnapshot {
+        val capturedLateFiles = capturedBeforeContent.keys.intersect(vfsChangedFiles)
+        val mergedCapturedBeforeContent = snapshot.capturedBeforeContent.toMutableMap()
+        capturedLateFiles.forEach { relativePath ->
+            if (relativePath !in mergedCapturedBeforeContent) {
+                val lateCapturedContent = capturedBeforeContent[relativePath] ?: return@forEach
+                val knownBeforeContent = snapshot.knownFileStates[relativePath]
+                val currentContent = PathUtil.resolveProjectPath(project, relativePath)
+                    ?.let(::File)
+                    ?.takeIf { it.isFile }
+                    ?.runCatching { readText() }
+                    ?.getOrNull()
+
+                mergedCapturedBeforeContent[relativePath] =
+                    if (knownBeforeContent != null &&
+                        knownBeforeContent != currentContent &&
+                        lateCapturedContent == currentContent
+                    ) {
+                        knownBeforeContent
+                    } else {
+                        lateCapturedContent
+                    }
+            }
+        }
+        return snapshot.copy(
+            vfsChangedFiles = snapshot.vfsChangedFiles + capturedLateFiles,
+            serverEditedFiles = snapshot.serverEditedFiles + capturedLateFiles + serverEditedFiles,
+            aiCreatedFiles = snapshot.aiCreatedFiles + aiCreatedFiles,
+            userEditedFiles = snapshot.userEditedFiles + userEditedFiles,
+            capturedBeforeContent = mergedCapturedBeforeContent
+        )
+    }
     
     fun getKnownFilePaths(): Set<String> {
         return lastKnownFileStates.keys.toSet()
@@ -740,20 +785,20 @@ open class SessionManager(private val project: Project) : Disposable {
     /**
      * Accept a diff: stage the file via Git.
      */
-    fun acceptDiff(entry: DiffEntry, onComplete: ((Boolean) -> Unit)? = null) {
+    fun acceptDiff(entry: DiffEntry, onComplete: ((Boolean, String?) -> Unit)? = null) {
         val path = entry.file
         logger.info("[SessionManager] Accept: $path")
 
         AppExecutorUtil.getAppExecutorService().submit {
             var success = false
+            var failureReason: String? = null
             try {
-                val cmd = GeneralCommandLine("git", "add", path)
+                val cmd = GeneralCommandLine("git", "add", "--", path)
+                    .withCharset(Charset.defaultCharset())
                     .withWorkDirectory(project.basePath)
-                val handler = OSProcessHandler(cmd)
-                handler.startNotify()
-                val finished = handler.waitFor(5000)
-                val exitCode = handler.exitCode ?: -1
-                success = finished && exitCode == 0
+                val output = CapturingProcessHandler(cmd).runProcess(5000)
+                val exitCode = output.exitCode
+                success = !output.isTimeout && exitCode == 0
                 
                 if (success) {
                     pendingDiffs.remove(path)
@@ -762,22 +807,46 @@ open class SessionManager(private val project: Project) : Disposable {
                     // Special case: File deleted and likely untracked (git add fails with 128)
                     // If the file is gone from disk, we can consider the "delete" accepted.
                     val absPath = PathUtil.resolveProjectPath(project, path)
-                    if (exitCode == 128 && absPath != null && !File(absPath).exists()) {
+                    if (!output.isTimeout &&
+                        exitCode == 128 &&
+                        absPath != null &&
+                        !File(absPath).exists() &&
+                        isGitRepository()
+                    ) {
                         logger.info("[SessionManager] Git add failed (128) but file is deleted. Treating as success.")
                         pendingDiffs.remove(path)
                         success = true // Mark as success for callback
                     } else {
-                        logger.warn("[SessionManager] Git add failed: exitCode=$exitCode")
+                        failureReason = if (output.isTimeout) {
+                            "Git staging timed out."
+                        } else {
+                            listOf(output.stderr, output.stdout)
+                                .map(String::trim)
+                                .firstOrNull(String::isNotEmpty)
+                                ?.take(1000)
+                                ?: "Git exited with code $exitCode without reporting an error."
+                        }
+                        logger.warn("[SessionManager] Git add failed: $failureReason")
                     }
                 }
             } catch (e: Exception) {
                 logger.error("[SessionManager] Accept failed: $path", e)
+                failureReason = e.message ?: e.javaClass.simpleName
             }
 
             onComplete?.let { cb ->
-                ApplicationManager.getApplication().invokeLater { cb(success) }
+                ApplicationManager.getApplication().invokeLater { cb(success, failureReason) }
             }
         }
+    }
+
+    private fun isGitRepository(): Boolean {
+        val basePath = project.basePath ?: return false
+        val command = GeneralCommandLine("git", "rev-parse", "--is-inside-work-tree")
+            .withCharset(Charset.defaultCharset())
+            .withWorkDirectory(basePath)
+        val output = CapturingProcessHandler(command).runProcess(5000)
+        return !output.isTimeout && output.exitCode == 0 && output.stdout.trim() == "true"
     }
 
     /**
@@ -865,6 +934,7 @@ open class SessionManager(private val project: Project) : Disposable {
 
     fun clear() {
         isBusy = false
+        awaitingLateChanges = false
         baselineLabel = null
         vfsChangedFiles.clear()
         serverEditedFiles.clear()

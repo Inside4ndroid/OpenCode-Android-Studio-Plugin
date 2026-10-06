@@ -142,6 +142,20 @@ data class CommandExecutedProperties(
     val messageID: String
 )
 
+data class SessionExecutionEvent(
+    override val type: String,
+    val properties: JsonObject
+) : OpenCodeEvent() {
+    val sessionID: String?
+        get() = sequenceOf("sessionID", "sessionId")
+            .mapNotNull { key -> properties.get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString }
+            .firstOrNull()
+            ?: properties.getAsJsonObject("session")
+                ?.get("id")
+                ?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }
+                ?.asString
+}
+
 /**
  * Unknown event type - for events we don't specifically handle.
  */
@@ -172,6 +186,11 @@ class OpenCodeEventDeserializer : JsonDeserializer<OpenCodeEvent> {
             "message.part.updated" -> context.deserialize(json, MessagePartUpdatedEvent::class.java)
             "message.part.removed" -> context.deserialize(json, MessagePartRemovedEvent::class.java)
             "command.executed" -> context.deserialize(json, CommandExecutedEvent::class.java)
+            "session.execution.started",
+            "session.execution.succeeded",
+            "session.execution.failed",
+            "session.execution.cancelled",
+            "session.execution.aborted" -> context.deserialize(json, SessionExecutionEvent::class.java)
             else -> UnknownEvent(eventType)
         }
     }

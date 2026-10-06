@@ -199,7 +199,7 @@ class RealProcessIntegrationTest : BasePlatformTestCase() {
         }
         
         val acceptLatch = java.util.concurrent.CountDownLatch(1)
-        sm.acceptDiff(entry) { success ->
+        sm.acceptDiff(entry) { success, _ ->
             assertTrue("Accept should succeed", success)
             acceptLatch.countDown()
         }

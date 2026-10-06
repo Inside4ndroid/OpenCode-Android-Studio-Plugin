@@ -12,15 +12,15 @@ data class FileDiff(
 )
 
 /**
- * 自定义反序列化器，处理服务端返回的 Go 语言 %q 格式字符串。
+ * Custom deserializer for Go `%q`-formatted strings returned by the server.
  * 
- * 服务端在序列化包含非 ASCII 字符的字符串时，可能使用 Go 的 %q 格式，
- * 导致 JSON 中出现类似 "\"\\344\\270\\255\\346\\226\\207.md\"" 的值。
+ * When serializing strings containing non-ASCII characters, the server may use Go's `%q` format,
+ * resulting in JSON values such as `"\"\\344\\270\\255\\346\\226\\207.md\""`.
  * 
- * 该反序列化器会：
- * 1. 去掉外层多余的引号
- * 2. 将八进制转义序列 (\xxx) 解码为实际字节
- * 3. 使用 UTF-8 将字节转换回中文字符
+ * This deserializer:
+ * 1. Removes the extra outer quotes.
+ * 2. Decodes octal escape sequences (`\xxx`) into bytes.
+ * 3. Converts the bytes back to text using UTF-8.
  */
 class FileDiffDeserializer : JsonDeserializer<FileDiff> {
     override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): FileDiff {
@@ -33,10 +33,8 @@ class FileDiffDeserializer : JsonDeserializer<FileDiff> {
         
         return FileDiff(
             file = decodeGoQuotedString(stringValue("file")),
-            // before 和 after 字段是普通 JSON 字符串，不需要 decodeGoQuotedString 解码
-            // 否则会导致：
-            // 1. 内容首尾的双引号被错误去除
-            // 2. 内容中的反斜杠被错误转义 (e.g. "\\n" -> "\n")
+            // The before and after fields are regular JSON strings; decoding them would remove
+            // surrounding quotes or alter backslashes.
             before = stringValue("before"),
             after = stringValue("after"),
             additions = intValue("additions"),
@@ -46,36 +44,36 @@ class FileDiffDeserializer : JsonDeserializer<FileDiff> {
     
     companion object {
         /**
-         * 解码 Go 语言 %q 格式的字符串。
+         * Decodes a string formatted using Go's `%q` representation.
          * 
-         * 例如：
-         * - "\"\\344\\270\\255\\346\\226\\207.md\"" -> "中文.md"
-         * - "normal.txt" -> "normal.txt" (无变化)
+         * For example:
+         * - `"\\143\\141\\146\\303\\251.md"` -> `"café.md"`
+         * - `"normal.txt"` -> `"normal.txt"` (unchanged)
          */
         fun decodeGoQuotedString(input: String): String {
             var s = input
             
-            // 如果不包含八进制转义，直接返回
+            // Return directly when there are no octal escapes.
             if (!s.contains("\\")) {
-                // 但可能有外层引号
+                // The value may still have outer quotes.
                 if (s.startsWith("\"") && s.endsWith("\"") && s.length >= 2) {
                     return s.substring(1, s.length - 1)
                 }
                 return s
             }
             
-            // 去掉外层引号 (Go %q 格式会添加)
+            // Remove the outer quotes added by Go's `%q` format.
             if (s.startsWith("\"") && s.endsWith("\"") && s.length >= 2) {
                 s = s.substring(1, s.length - 1)
             }
             
-            // 处理转义序列
+            // Process escape sequences.
             val bytes = mutableListOf<Byte>()
             var i = 0
             while (i < s.length) {
                 if (s[i] == '\\' && i + 1 < s.length) {
                     when {
-                        // 八进制转义: \xxx (3位八进制数)
+                        // Octal escape: \xxx (three octal digits).
                         i + 3 < s.length && s[i + 1].isDigit() -> {
                             val octal = s.substring(i + 1, i + 4)
                             try {
@@ -83,10 +81,10 @@ class FileDiffDeserializer : JsonDeserializer<FileDiff> {
                                 i += 4
                                 continue
                             } catch (_: NumberFormatException) {
-                                // 不是有效的八进制，按普通字符处理
+                                // Not a valid octal value; process it as ordinary characters.
                             }
                         }
-                        // 常见转义字符
+                        // Common escape characters.
                         s[i + 1] == 'n' -> { bytes.add('\n'.code.toByte()); i += 2; continue }
                         s[i + 1] == 'r' -> { bytes.add('\r'.code.toByte()); i += 2; continue }
                         s[i + 1] == 't' -> { bytes.add('\t'.code.toByte()); i += 2; continue }
@@ -95,8 +93,7 @@ class FileDiffDeserializer : JsonDeserializer<FileDiff> {
                     }
                 }
                 
-                // 普通字符 (ASCII 或 Unicode)
-                // 修复: 原来的 s[i].code.toByte() 会导致非 ASCII 字符 (如中文) 被截断从而乱码
+                // Preserve non-ASCII characters as UTF-8 instead of truncating them to one byte.
                 val c = s[i]
                 if (c.code < 128) {
                     bytes.add(c.code.toByte())

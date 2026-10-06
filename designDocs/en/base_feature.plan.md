@@ -1,8 +1,8 @@
-# OpenCode JetBrains Plugin: Base Feature Design
+# OpenCode ASP: Base Feature Design
 
 ## Overview
 
-This document describes the user experience and technical design of the OpenCode JetBrains plugin's base features.
+This document describes the user experience and technical design of OpenCode ASP's base features.
 
 ## Implemented Features
 
@@ -69,7 +69,7 @@ The plugin combines API polling for recovery with SSE for real-time updates. Eve
 
 ```mermaid
 sequenceDiagram
-    participant IDE as OpenCode Plugin
+    participant IDE as OpenCode ASP
     participant API as API Client
     participant SSE as SSE Listener
     participant Server as OpenCode Server

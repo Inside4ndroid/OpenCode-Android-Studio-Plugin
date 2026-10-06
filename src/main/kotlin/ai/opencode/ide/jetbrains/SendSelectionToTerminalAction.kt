@@ -31,32 +31,32 @@ class SendSelectionToTerminalAction : AnAction() {
 
         val editor = e.getData(CommonDataKeys.EDITOR)
         val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
+        val focusedFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
 
         val textToSend = StringBuilder()
 
-        if (editor != null) {
-            val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-            val relativePath = file?.let { getRelativePath(project, it) }
+        if (editor != null && focusedFile != null) {
+            val relativePath = getRelativePath(project, focusedFile)
 
-            if (relativePath != null) {
-                val referencePath = formatPathReference(relativePath)
-                if (editor.selectionModel.hasSelection()) {
-                    // Editor selection: only @path#Lstart-end (NO content)
-                    val selectionModel = editor.selectionModel
-                    val document = editor.document
-                    val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
-                    val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
+            val referencePath = formatPathReference(relativePath)
+            if (editor.selectionModel.hasSelection()) {
+                // Editor selection: only @path#Lstart-end (NO content)
+                val selectionModel = editor.selectionModel
+                val document = editor.document
+                val startLine = document.getLineNumber(selectionModel.selectionStart) + 1
+                val endLine = document.getLineNumber(selectionModel.selectionEnd) + 1
 
-                    textToSend.append("@$referencePath#L$startLine-$endLine")
-                } else {
-                    // No selection: share current file reference
-                    textToSend.append("@$referencePath")
-                }
+                textToSend.append("@$referencePath#L$startLine-$endLine")
+            } else {
+                // No selection: share current file reference
+                textToSend.append("@$referencePath")
             }
-        } else if (virtualFiles != null && virtualFiles.isNotEmpty()) {
+        } else {
             // Project View selection: @path per file/directory
-            val focusedFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
-            val normalizedSelection = normalizeProjectSelection(virtualFiles, focusedFile)
+            val selectedFiles = virtualFiles?.takeIf { it.isNotEmpty() }
+                ?: focusedFile?.let { arrayOf(it) }
+                ?: emptyArray()
+            val normalizedSelection = normalizeProjectSelection(selectedFiles, focusedFile)
             for (file in normalizedSelection) {
                 val relativePath = getRelativePath(project, file)
                 val referencePath = formatPathReference(relativePath)
@@ -79,9 +79,10 @@ class SendSelectionToTerminalAction : AnAction() {
 
         val editor = e.getData(CommonDataKeys.EDITOR)
         val virtualFiles = e.getData(CommonDataKeys.VIRTUAL_FILE_ARRAY)
+        val focusedFile = e.getData(CommonDataKeys.VIRTUAL_FILE)
 
         val hasEditorContext = editor != null && e.getData(CommonDataKeys.VIRTUAL_FILE) != null
-        val hasFileSelection = virtualFiles != null && virtualFiles.isNotEmpty()
+        val hasFileSelection = virtualFiles?.isNotEmpty() == true || focusedFile != null
 
         // Always available even if terminal isn't created yet
         e.presentation.isEnabledAndVisible = hasEditorContext || hasFileSelection

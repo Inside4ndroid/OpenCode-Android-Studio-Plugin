@@ -9,7 +9,10 @@ import com.intellij.history.Label
 import com.intellij.openapi.project.Project
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.util.ui.UIUtil
+import java.io.File
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Logic Unit Test using Fake Server.
@@ -20,6 +23,175 @@ class OpenCodeLogicTest : BasePlatformTestCase() {
     override fun setUp() {
         super.setUp()
         OpenCodeService.DEBOUNCE_MS = 0L
+    }
+
+    fun testAcceptDiffReportsGitFailureDetailsOutsideRepository() {
+        val baseDir = File(project.basePath ?: error("Test project has no base path"))
+        assertTrue("Test project directory could not be created", baseDir.mkdirs() || baseDir.isDirectory)
+        val file = File(baseDir, "not-a-git-repository.kt")
+        file.writeText("test")
+        val sessionManager = TestSessionManager(project)
+        val failure = AtomicReference<String?>()
+        val succeeded = AtomicReference<Boolean>()
+        val completed = CountDownLatch(1)
+
+        try {
+            sessionManager.acceptDiff(
+                DiffEntry(
+                    file = file.name,
+                    diff = FileDiff(file.name, "before", "after", 1, 1)
+                )
+            ) { success, error ->
+                succeeded.set(success)
+                failure.set(error)
+                completed.countDown()
+            }
+
+            val deadline = System.currentTimeMillis() + 10000
+            while (completed.count > 0 && System.currentTimeMillis() < deadline) {
+                UIUtil.dispatchAllInvocationEvents()
+                Thread.sleep(50)
+            }
+
+            assertEquals("Git staging did not complete", 0L, completed.count)
+            assertFalse("Staging should fail outside a Git repository", succeeded.get())
+            assertFalse("Git failure details should be reported", failure.get().isNullOrBlank())
+            assertFalse(
+                "Git stderr should be provided instead of the generic fallback",
+                failure.get().orEmpty().contains("without reporting an error")
+            )
+        } finally {
+            file.delete()
+        }
+    }
+
+    fun testServerEditedFileIsRecoveredWhenServerReturnsNoDiff() {
+        val baseDir = project.basePath ?: error("Test project has no base path")
+        val file = File(baseDir, "server-edited.kt")
+        file.writeText("before")
+
+        try {
+            val sessionManager = TestSessionManager(project)
+            sessionManager.updateKnownState(listOf(file.name))
+            assertTrue(sessionManager.onTurnStart())
+
+            file.writeText("after")
+            sessionManager.onFileEdited(file.absolutePath)
+            val snapshot = sessionManager.onTurnEnd() ?: error("Turn snapshot was not created")
+
+            val entries = sessionManager.getProcessedDiffs(emptyList(), snapshot)
+
+            assertEquals(1, entries.size)
+            assertEquals(file.name, entries.single().file)
+            assertEquals("before", entries.single().beforeContent)
+            assertEquals("after", entries.single().diff.after)
+        } finally {
+            file.delete()
+        }
+    }
+
+    fun testServerEditedFileIsShownWhenUserEditWasAlsoDetected() {
+        val baseDir = File(project.basePath ?: error("Test project has no base path"))
+        assertTrue(baseDir.mkdirs() || baseDir.isDirectory)
+        val file = File(baseDir, "server-and-user-edited.kt")
+        file.writeText("before")
+        val sessionManager = TestSessionManager(project)
+
+        try {
+            sessionManager.updateKnownState(listOf(file.name))
+            assertTrue(sessionManager.onTurnStart())
+
+            file.writeText("after")
+            sessionManager.simulateServerEdited(file.name)
+            sessionManager.simulateUserEdit(file.name)
+
+            val snapshot = sessionManager.onTurnEnd() ?: error("Turn snapshot was not created")
+            val entries = sessionManager.getProcessedDiffs(emptyList(), snapshot)
+
+            assertEquals(1, entries.size)
+            assertEquals(file.name, entries.single().file)
+            assertTrue("The diff should retain its user-edit warning", entries.single().hasUserEdits)
+            assertEquals("before", entries.single().beforeContent)
+            assertEquals("after", entries.single().diff.after)
+        } finally {
+            file.delete()
+        }
+    }
+
+    fun testV2ExecutionEventsOpenDiffViewerWithoutMessageId() {
+        val baseDir = project.basePath ?: error("Test project has no base path")
+        File(baseDir).mkdirs()
+        val file = File(baseDir, "v2-edited.kt")
+        file.writeText("before")
+
+        val server = FakeOpenCodeServer(0)
+        server.start()
+        val runner = TestRunner(project, server.activePort)
+
+        try {
+            assertTrue("Plugin did not connect to the fake SSE server", server.awaitSseClient())
+            runner.sessionManager.updateKnownState(listOf(file.name))
+            server.broadcast(
+                """{"id":"evt_start","type":"session.execution.started","data":{"sessionID":"ses-v2"}}"""
+            )
+            Thread.sleep(100)
+
+            file.writeText("after")
+            server.broadcast(
+                """{"id":"evt_file","type":"file.edited","data":{"file":"${file.absolutePath.replace("\\", "\\\\")}"}}"""
+            )
+            server.setSessionDiffResponse(
+                """[{"file":"v2-edited.kt","before":"before","after":"after","additions":1,"deletions":1}]"""
+            )
+            server.broadcast(
+                """{"id":"evt_success","type":"session.execution.succeeded","data":{"sessionID":"ses-v2"}}"""
+            )
+
+            runner.waitForDiffs(1, timeoutMs = 5000)
+            runner.assertDiffShown(file.name)
+        } finally {
+            server.stop()
+            file.delete()
+        }
+    }
+
+    fun testV2ExecutionRetriesAfterLateVfsModification() {
+        val baseDir = project.basePath ?: error("Test project has no base path")
+        File(baseDir).mkdirs()
+        val file = File(baseDir, "v2-late-edited.kt")
+        file.writeText("before")
+        val virtualFile = com.intellij.openapi.vfs.LocalFileSystem.getInstance()
+            .refreshAndFindFileByIoFile(file)
+            ?: error("Could not refresh test file in VFS")
+
+        val server = FakeOpenCodeServer(0)
+        server.start()
+        val runner = TestRunner(project, server.activePort)
+
+        try {
+            assertTrue("Plugin did not connect to the fake SSE server", server.awaitSseClient())
+            runner.sessionManager.updateKnownState(listOf(file.name))
+            server.setSessionDiffResponse("[]")
+            server.broadcast(
+                """{"id":"evt_start","type":"session.execution.started","data":{"sessionID":"ses-v2-late"}}"""
+            )
+            Thread.sleep(100)
+            server.broadcast(
+                """{"id":"evt_success","type":"session.execution.succeeded","data":{"sessionID":"ses-v2-late"}}"""
+            )
+
+            Thread.sleep(250)
+            file.writeText("after")
+            assertEquals("after", file.readText())
+            com.intellij.openapi.vfs.LocalFileSystem.getInstance().refreshAndFindFileByIoFile(file)
+
+            runner.waitForDiffs(1, timeoutMs = 10000)
+            runner.assertDiffContent(file.name, "before")
+        } finally {
+            server.stop()
+            file.delete()
+            virtualFile.refresh(false, false)
+        }
     }
 
     fun testDiffScenarios() {

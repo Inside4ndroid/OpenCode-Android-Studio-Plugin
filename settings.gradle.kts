@@ -1,1 +1,1 @@
-rootProject.name = "OpenCode_UI"
+rootProject.name = "OpenCode-ASP"

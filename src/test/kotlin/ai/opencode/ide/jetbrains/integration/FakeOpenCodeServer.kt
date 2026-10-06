@@ -7,12 +7,15 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 class FakeOpenCodeServer(val port: Int) {
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
     private val sseClients = CopyOnWriteArrayList<OutputStream>()
+    private val sseClientConnected = CountDownLatch(1)
     private val diffResponses = ConcurrentHashMap<String, String>()
     private val diffDelays = ConcurrentHashMap<String, Long>()
+    @Volatile private var sessionDiffResponse = "[]"
     val receivedPrompts = CopyOnWriteArrayList<String>()
     val promptReceived = CountDownLatch(1)
     
@@ -58,6 +61,7 @@ class FakeOpenCodeServer(val port: Int) {
             
             val os = ex.responseBody
             sseClients.add(os)
+            sseClientConnected.countDown()
             println("  [FakeServer] SSE Client connected")
             
             // Keep connection open
@@ -91,7 +95,7 @@ class FakeOpenCodeServer(val port: Int) {
                     ?.find { it.startsWith("messageID=") }
                     ?.substringAfter("=")
                 
-                val body = diffResponses[messageId] ?: "[]"
+                val body = if (messageId == null) sessionDiffResponse else diffResponses[messageId] ?: "[]"
                 val delay = diffDelays[messageId] ?: 0
                 
                 if (delay > 0) Thread.sleep(delay)
@@ -133,9 +137,15 @@ class FakeOpenCodeServer(val port: Int) {
         }
         println("  [FakeServer] Broadcast: $json")
     }
-    
+
+    fun awaitSseClient(timeoutMs: Long = 5000): Boolean = sseClientConnected.await(timeoutMs, TimeUnit.MILLISECONDS)
+
     fun setDiffResponse(messageId: String, json: String, delayMs: Long = 0) {
         diffResponses[messageId] = json
         if (delayMs > 0) diffDelays[messageId] = delayMs
+    }
+
+    fun setSessionDiffResponse(json: String) {
+        sessionDiffResponse = json
     }
 }

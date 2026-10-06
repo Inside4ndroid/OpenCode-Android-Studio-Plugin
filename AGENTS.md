@@ -1,15 +1,15 @@
-# OpenCode IntelliJ Plugin - Developer Guide for Agents
+# OpenCode ASP - Developer Guide for Agents
 
-This repository contains the source code for the OpenCode IntelliJ Platform plugin.
+This repository contains the source code for OpenCode ASP, the OpenCode Android Studio Plugin.
 This document provides strict guidelines and useful context for AI agents (and human developers) working on this codebase.
 
 ## 1. Project Overview
 
-- **Type**: IntelliJ Platform Plugin
+- **Type**: Android Studio / IntelliJ Platform Plugin
 - **Language**: Kotlin (JDK 17)
 - **Build System**: Gradle (Kotlin DSL)
-- **Target Platform**: IntelliJ IDEA 2024.2+ (Since Build 242)
-- **Version**: 1.0.4+ (See `build.gradle.kts`)
+- **Target Platform**: Android Studio 2025.2+ (IntelliJ Platform build 252+)
+- **Version**: 1.0.0 (See `build.gradle.kts`)
 
 ### Core Dependencies
 - **IntelliJ Platform SDK**: 2025.2.4
@@ -144,10 +144,6 @@ src/main/kotlin/ai/opencode/ide/jetbrains/
 - **Paths (Cross-Platform)**: Always normalize/resolve paths via `ai.opencode.ide.jetbrains.util.PathUtil`. Avoid hardcoded separators or manual `substring` logic. Ensure Windows/macOS/Linux compatibility.
 - **Read/Write Actions**: Modifying the PSI or VFS requires a Write Action (`runWriteAction`). Reading requires a Read Action.
 - **SDK Compatibility**: Ensure APIs used are available in the target version (see `build.gradle.kts`).
-
-## 6. 语言规则  [ Note: Instruction for models to responsd in Chinese - remove if you can't read Chinese! ]
-
-- **必须使用中文回复**: 所有对用户的回复、解释和沟通**必须**使用中文进行。
 
 ---
 *End of Developer Guide*
